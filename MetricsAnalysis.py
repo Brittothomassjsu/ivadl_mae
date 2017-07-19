@@ -58,21 +58,18 @@ class annotationmetrics():
         """
         frm_id = 0
         kframe_id = 0
-        tpf = round(1.0 / 30.0,2)
         arr_in = sorted(arr_in, key=lambda k: k['keyframes'][kframe_id]['frame'])
-        li_frameid = []
-        #print(arr_in)
 
         for i in range(len(arr_in)):
-            frame_id = int(round(arr_in[i]['keyframes'][kframe_id]['frame'], 2) / tpf)
-
-            if frame_id not in li_frameid:
-                arr_out.append([])    # Added frame 0
-                frm_id +=1
-                li_frameid.append(frame_id)
-
             if i == 0:
                 frm_id = 0
+                arr_out.append([])
+            else:
+                if arr_out[frm_id][kframe_id]['frame'] != arr_in[i]['keyframes'][kframe_id]['frame']:
+                    arr_out.append([])    # Added new frame to list of frames
+                    frm_id +=1
+                else:
+                    frm_id += 0
 
             obj = {}
             obj['color'] = arr_in[i]['color']
@@ -81,7 +78,7 @@ class annotationmetrics():
             obj['y'] = arr_in[i]['keyframes'][kframe_id]['y']
             obj['w'] = arr_in[i]['keyframes'][kframe_id]['w']
             obj['h'] = arr_in[i]['keyframes'][kframe_id]['h']
-            obj['frame'] = round(arr_in[i]['keyframes'][kframe_id]['frame'], 2)
+            obj['frame'] = arr_in[i]['keyframes'][kframe_id]['frame']
             obj['continueInterpolation'] = arr_in[i]['keyframes'][kframe_id]['continueInterpolation']
 
             try:
@@ -93,11 +90,11 @@ class annotationmetrics():
 
             obj['detected'] = -1
             obj['BBA'] = -1
-            obj['frameID'] = frame_id
+            obj['frameID'] = frm_id
             arr_out[frm_id].append(obj)
         print(arr_out[frm_id])
 
-    def mapFrames(self,gt_obj_eval,p_obj_eval):
+    def mapFrames(self):
         """
         Compares frame timestamps of GT and Predicted frames and assigns frameID
 
@@ -106,19 +103,17 @@ class annotationmetrics():
         :return:
 
         """
-        gtframes = len(gt_obj_eval)
-        pframes = len(p_obj_eval)
-        obj_id = 0
+        gtframes = len(self.gt_obj_eval)
+        pframes = len(self.p_obj_eval)
 
-        for gf in range(gtframes):
-            for pf in range(pframes):
-                if gt_obj_eval[gf][obj_id]['frame'] == p_obj_eval[gf][obj_id]['frame'] and p_obj_eval[pf][obj_id]['frameID']  == -1:
-                    for obj in range(len(gt_obj_eval[gf])):
-                        gt_obj_eval[gf][obj]['frameID'] = gf
-                    for obj in range(len(p_obj_eval[pf])):
-                        p_obj_eval[pf][obj]['frameID']  = gf
-                    break
-        p_obj_eval = sorted(p_obj_eval, key=lambda k: k[obj_id]['frameID'])
+        diff = gtframes-pframes
+
+        if diff > 0:
+            self.gt_obj_eval = self.gt_obj_eval[:pframes]
+
+        elif diff<0:
+            self.p_obj_eval = self.p_obj_eval[:gtframes]
+        #p_obj_eval = sorted(p_obj_eval, key=lambda k: k[obj_id]['frameID'])
 
 
     def mapObjects(self,gt_obj_eval,p_obj_eval):
@@ -138,42 +133,39 @@ class annotationmetrics():
         obj_id =0
         print(pframes)
         print(gtframes)
-        print("Map Objects between same frame")
+        print("Map Objects between frames in GT and Prediction")
 
         for frameid in range(gtframes):
+            if gt_obj_eval[frameid][obj_id]['frameID'] == p_obj_eval[frameid][obj_id]['frameID']:
 
-            if frameid < pframes or True:
+                # print("Map Objects for frame: {0}".format(frameid)+"\n")
+                for g in range(len(gt_obj_eval[frameid])):
+                    rlist = []
+                    self.total_bb += 1
+                    for p in range(len(p_obj_eval[frameid])):
+                        rt = self.iou(gt_obj_eval, p_obj_eval, frameid, g, p)  # calculate IoU
+                        rlist.append(rt)
 
-                if gt_obj_eval[frameid][obj_id]['frameID'] == p_obj_eval[frameid][obj_id]['frameID']:
+                    # print("GT Object {0} IoU:{1}".format(g,rlist))
+                    ratio = max(rlist)
+                    idx = rlist.index(ratio)
+                    # print("Max found at {0}:{1}".format(idx,ratio))
 
-                    #print("Map Objects for frame: {0}".format(frameid)+"\n")
-                    for g in range(len(gt_obj_eval[frameid])):
-                        rlist = []
-                        self.total_bb +=1
-                        for p in range(len(p_obj_eval[frameid])):
-                            rt = self.iou(gt_obj_eval,p_obj_eval,frameid,g,p)  #calculate IoU
-                            rlist.append(rt)
+                    p_obj_eval[frameid][idx]['bbID'] = g
+                    gt_obj_eval[frameid][g]['bbID'] =  g
 
-                        #print("GT Object {0} IoU:{1}".format(g,rlist))
-                        ratio = max(rlist)
-                        idx = rlist.index(ratio)
-                        #print("Max found at {0}:{1}".format(idx,ratio))
+                    if ratio >= 0.5:
+                        p_obj_eval[frameid][idx]['detected'] = 1
+                        p_obj_eval[frameid][idx]['BBA'] = 2  # 2 - good
 
-                        p_obj_eval[frameid][idx]['bbID']= self.total_bb
-                        gt_obj_eval[frameid][g]['bbID'] = self.total_bb
+                    elif 0.5 > ratio > 0:
+                        p_obj_eval[frameid][idx]['detected'] = 1
+                        p_obj_eval[frameid][idx]['BBA'] = 1  # 1- bad
 
-                        if ratio >= 0.5:
-                            p_obj_eval[frameid][idx]['detected'] = 1
-                            p_obj_eval[frameid][idx]['BBA'] = 2   # 2 - good
-
-                        elif 0.5 > ratio > 0:
-                            p_obj_eval[frameid][idx]['detected'] = 1
-                            p_obj_eval[frameid][idx]['BBA'] = 1    # 1- bad
-
-                        elif ratio == 0:
-                            p_obj_eval[frameid][idx]['detected'] = 0
-                            p_obj_eval[frameid][idx]['BBA'] = 0  # 0- Missed
-                    #p_obj_eval[frameid] = sorted(p_obj_eval[frameid], key=lambda k: k['prob'], reverse=True)
+                    elif ratio == 0:
+                        p_obj_eval[frameid][idx]['detected'] = -1
+                        p_obj_eval[frameid][idx]['BBA'] = 0  # 0- Missed
+                        # p_obj_eval[frameid] = sorted(p_obj_eval[frameid], key=lambda k: k['prob'], reverse=True)
 
     def detectedGTObjects(self,gt_obj_eval,p_obj_eval):
         """
@@ -187,17 +179,13 @@ class annotationmetrics():
         obj_id = 0
 
         for frameid in range(gtframes):
+            if gt_obj_eval[frameid][obj_id]['frameID'] == p_obj_eval[frameid][obj_id]['frameID']:
 
-            if frameid < pframes or True:
-
-                if gt_obj_eval[frameid][obj_id]['frameID'] == p_obj_eval[frameid][obj_id]['frameID']:
-
-                    for i in range(len(gt_obj_eval[frameid])):
-                        for j in range(len(p_obj_eval[frameid])):
-                            if gt_obj_eval[frameid][i]['bbID'] == p_obj_eval[frameid][j]['bbID']:
-                                gt_obj_eval[frameid][i]['detected']= 1
-                                break
-
+                for i in range(len(gt_obj_eval[frameid])):
+                    for j in range(len(p_obj_eval[frameid])):
+                        if gt_obj_eval[frameid][i]['bbID'] == p_obj_eval[frameid][j]['bbID']:
+                            gt_obj_eval[frameid][i]['detected'] = 1
+                            break
 
     def iou(self, gt_obj_eval,p_obj_eval,frameid, gtbb, pbb):
         """
@@ -251,37 +239,37 @@ class annotationmetrics():
 
         for frameid in range(gtframes): #for each frame
 
-            if frameid < pframes or True:
+            acc_cnt = {'frameID': frameid, 'mAP': -1, 'classes': []}
+            mean_average_precision = 0
 
-                acc_cnt = {'frameID': frameid, 'mAP': -1, 'classes': []}
-                mean_average_precision=0
+            for id, objclass in enumerate(self.gt_obj_class):  # for each class
+                class_accuracy = {'class': objclass.lower(), 'tp': 0, 'tn': 0, 'fp': 0, 'fn': 0, 'precision': [],'recall': [], 'AP': -1}
+                fn = 0
+                avg = 0
+                delta_recall = []
+                plist = []
+                acc_cnt['classes'].append(class_accuracy)
 
-                for id,objclass in enumerate(self.gt_obj_class): #for each class
-                    class_accuracy = {'class': objclass.lower(), 'tp': 0, 'tn': 0, 'fp': 0, 'fn': 0, 'precision': [], 'recall': [],'AP': -1}
-                    fn = 0
-                    avg = 0
-                    delta_recall = []
-                    plist = []
-                    acc_cnt['classes'].append(class_accuracy)
+                for i in range(len(p_obj_eval[frameid])):
+                    if p_obj_eval[frameid][i]['type'].lower() == objclass.lower():
+                        plist.append(p_obj_eval[frameid][i])
+                plist = sorted(plist,key=lambda k: k['prob'], reverse=True)
 
-                    for i in range(len(p_obj_eval[frameid])):
-                        if p_obj_eval[frameid][i]['type'] == objclass:
-                            plist.append(p_obj_eval[frameid][i])
-                    plist = sorted(plist, key=lambda k: k['prob'], reverse=True)
+                for i in range(len(gt_obj_eval[frameid])):
+                    if gt_obj_eval[frameid][i]['detected'] == -1 and gt_obj_eval[frameid][i]['type'].lower() == objclass.lower():
+                        fn += 1
 
-                    for i in range(len(gt_obj_eval[frameid])):
-                        if gt_obj_eval[frameid][i]['detected'] == -1 and gt_obj_eval[frameid][i]['type'] == objclass:
-                            fn += 1
+                if plist:
 
-                    k = list(range(1,(len(plist)+1)))
+                    k = list(range(1, (len(plist) + 1)))
 
                     for cutoff in k:
                         tp = 0
                         fp = 0
                         f = list(range(cutoff))
-                        #print(f)
+                        gt =0
                         for obj in f:
-                            for x,y in enumerate(gt_obj_eval[frameid]):
+                            for x, y in enumerate(gt_obj_eval[frameid]):
                                 if plist[obj]['bbID'] == y['bbID']:
                                     gt = x
                                     break
@@ -294,43 +282,45 @@ class annotationmetrics():
                         acc_cnt['classes'][id]['fp'] = fp
                         acc_cnt['classes'][id]['fn'] = fn
 
-                        if tp != 0 or fp!=0:
-                            acc_cnt['classes'][id]['precision'].append((tp / (fp+tp)))
+                        if tp != 0 or fp != 0:
+                            acc_cnt['classes'][id]['precision'].append((tp / (fp + tp)))
                         else:
                             acc_cnt['classes'][id]['precision'].append(0)
 
-                        if tp != 0 or fn!=0:
-                            acc_cnt['classes'][id]['recall'].append(( tp / (fn + tp)))
+                        if tp != 0 or fn != 0:
+                            acc_cnt['classes'][id]['recall'].append((tp / (fn + tp)))
                         else:
                             acc_cnt['classes'][id]['recall'].append(0)
 
                     for r in range(len(acc_cnt['classes'][id]['recall'])):
                         if r > 0:
-                            delta_recall.append(acc_cnt['classes'][id]['recall'][r]-acc_cnt['classes'][id]['recall'][r-1])
-                        elif r==0:
+                            delta_recall.append(
+                                acc_cnt['classes'][id]['recall'][r] - acc_cnt['classes'][id]['recall'][r - 1])
+                        elif r == 0:
                             delta_recall.append(acc_cnt['classes'][id]['recall'][r])
 
                     for a in range(len(acc_cnt['classes'][id]['recall'])):
                         avg += acc_cnt['classes'][id]['precision'][a] * delta_recall[a]
 
-
                     mean_average_precision += avg
-                    acc_cnt['classes'][id]['AP']=avg
+                    acc_cnt['classes'][id]['AP'] = avg
 
-                    #print("Precision Recall for class {0}".format(objclass) + "\n" + str(acc_cnt['classes'][id]['precision']) + "\n" + str(acc_cnt['classes'][id]['recall']))
-                    #print(k)
-                    #print(plist)
-                    #print(delta_recall)
-                    #print("AP for class {0}".format(objclass)+ str(avg)+ "\n")
-                    #self.graph(acc_cnt['classes'][id]['recall'],acc_cnt['classes'][id]['precision'][:],objclass)
+                    # print("Precision Recall for class {0}".format(objclass) + "\n" + str(acc_cnt['classes'][id]['precision']) + "\n" + str(acc_cnt['classes'][id]['recall']))
+                    # print(k)
+                    # print(plist)
+                    # print(delta_recall)
+                    # print("AP for class {0}".format(objclass)+ str(avg)+ "\n")
+                    # self.graph(acc_cnt['classes'][id]['recall'],acc_cnt['classes'][id]['precision'][:],objclass)
 
-                mean_average_precision = mean_average_precision/len(self.gt_obj_class)
-                acc_cnt['mAP'] = mean_average_precision
-                self.eval_result.append(acc_cnt)
-                #print("mAP for frame:{0}".format(frameid) + "\n" + str(mean_average_precision))
+            mean_average_precision = mean_average_precision / len(self.gt_obj_class)  # Doubt ??
+            acc_cnt['mAP'] = mean_average_precision
+            self.eval_result.append(acc_cnt)
+            # print("mAP for frame:{0}".format(frameid) + "\n" + str(mean_average_precision))
 
             # for i in range(len(self.eval_result)):
             #     print("Accuracy count for frame:{0}".format(i) + "\n" + str(self.eval_result[i]))
+
+
 
     def findObjectClasses(self,gt_obj_eval):
         """
@@ -347,19 +337,18 @@ class annotationmetrics():
                     self.gt_obj_class.append(gt_obj_eval[frameid][i]['type'].lower())
         print("\n" + "GT classes labels" + "\n" + str(self.gt_obj_class))
 
-    def display(self,text,p_obj_eval=[],pframes=1):
+    def display(self,text,p_obj_eval=[],frames=1):
         # Show Objects per frame
         print("\n"+text+" list per frame ")
-        #pframes = len(p_obj_eval)
 
-        if pframes>0:
-            for i in range(pframes):
-                if isinstance(p_obj_eval[i],list):
-                    print("Frame {0}:{1}".format(i, len(p_obj_eval[i])))
-                    for obj in range(len(p_obj_eval[i])):
-                        print(text+" {0}: {1} ".format(obj, p_obj_eval[i][obj]))
-                elif isinstance(p_obj_eval[i],dict):
-                    print(text+" {0}: {1} ".format(i, p_obj_eval[i]))
+        if frames !=0 :
+            for pframes in range(frames):
+                if isinstance(p_obj_eval[pframes], list):
+                    print("Frame {0}:{1}".format(pframes, len(p_obj_eval[pframes])))
+                    for obj in range(len(p_obj_eval[pframes])):
+                        print(text + " {0}: {1} ".format(obj, p_obj_eval[pframes][obj]))
+                elif isinstance(p_obj_eval[pframes], dict):
+                    print(text + " {0}: {1} ".format(pframes, p_obj_eval[pframes]))
         else:
             print("Empty List")
 
@@ -388,19 +377,7 @@ class annotationmetrics():
         """
         self.jsonParse(self.p_obj,self.p_obj_eval)
         self.jsonParse(self.gt_obj, self.gt_obj_eval)
-
-        diff = len(self.gt_obj_eval)-len(self.p_obj_eval)
-        if diff != 0:
-            if diff > 0:
-                dummy_frame = [self.p_obj_eval[0][0]]
-                for i in range(diff):
-                    self.p_obj_eval.append(dummy_frame)
-            else:
-                dummy_frame = [self.gt_obj_eval[0][0]]
-                for i in range(diff):
-                    self.gt_obj_eval.append(dummy_frame)
-
-        self.mapFrames(self.gt_obj_eval,self.p_obj_eval)
+        self.mapFrames()
         self.mapObjects(self.gt_obj_eval,self.p_obj_eval)
         self.detectedGTObjects(self.gt_obj_eval,self.p_obj_eval)
 
@@ -420,9 +397,10 @@ class annotationmetrics():
         self.calculateAccuracyCount(self.gt_obj_eval, self.p_obj_eval)
 
         #Dump the logs to log.txt
+
         self.display("Predicted Object", self.p_obj_eval,len(self.p_obj_eval))
-        # self.display("GT Object", self.gt_obj_eval,len(self.gt_obj_eval))
-        # self.display("Evaluation Result", self.eval_result,len(self.eval_result))
+        self.display("GT Object", self.gt_obj_eval,len(self.gt_obj_eval))
+        self.display("Evaluation Result", self.eval_result,len(self.eval_result))
 
         #plot the graph for one frame
         for id in range(len(self.eval_result[0]['classes'])):
@@ -431,9 +409,9 @@ class annotationmetrics():
         return self.eval_result
 
 def main():
-    gt_file = "video_WALSH_2s_GT.json"
-    yolo_file = "video_WALSH_2s_YOLO.json"
-    frcnn_file = "video_WALSH_2s_RCNN.json"
+    gt_file = "test/video_WALSH_2s_GT.json"
+    yolo_file = "test/video_WALSH_2s_YOLO.json"
+    frcnn_file = "test/video_WALSH_2s_RCNN.json"
     call_api = True
     sys.stdout = open("log.txt", 'w')
     if not call_api:
