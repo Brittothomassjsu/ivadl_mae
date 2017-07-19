@@ -306,21 +306,12 @@ class annotationmetrics():
                     acc_cnt['classes'][id]['AP'] = avg
 
                     # print("Precision Recall for class {0}".format(objclass) + "\n" + str(acc_cnt['classes'][id]['precision']) + "\n" + str(acc_cnt['classes'][id]['recall']))
-                    # print(k)
-                    # print(plist)
-                    # print(delta_recall)
                     # print("AP for class {0}".format(objclass)+ str(avg)+ "\n")
                     # self.graph(acc_cnt['classes'][id]['recall'],acc_cnt['classes'][id]['precision'][:],objclass)
 
             mean_average_precision = mean_average_precision / len(self.gt_obj_class)  # Doubt ??
             acc_cnt['mAP'] = mean_average_precision
             self.eval_result.append(acc_cnt)
-            # print("mAP for frame:{0}".format(frameid) + "\n" + str(mean_average_precision))
-
-            # for i in range(len(self.eval_result)):
-            #     print("Accuracy count for frame:{0}".format(i) + "\n" + str(self.eval_result[i]))
-
-
 
     def findObjectClasses(self,gt_obj_eval):
         """
@@ -416,12 +407,12 @@ def main():
     sys.stdout = open("log.txt", 'w')
     if not call_api:
 
-        # if path.exists(frcnn_file) and path.exists(gt_file):
-        #     metrics_rcnn = annotationmetrics()
-        #     metrics_rcnn.jsonload(gt_file, frcnn_file)
-        #     metrics_rcnn.run()
-        # else:
-        #     print("File Error : Path doesn't exists")
+        if path.exists(frcnn_file) and path.exists(gt_file):
+            metrics_rcnn = annotationmetrics()
+            metrics_rcnn.jsonload(gt_file, frcnn_file)
+            metrics_rcnn.run()
+        else:
+            print("File Error : Path doesn't exists")
 
         if path.exists(yolo_file) and path.exists(gt_file):
             metrics_yolo = annotationmetrics()
